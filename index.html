@@ -226,13 +226,12 @@ main{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env
       <div class="bar">
         <label class="btn" for="file">📂 Tải file Word đề gốc (.docx)</label>
         <input type="file" id="file" accept=".docx" hidden>
-        <button class="btn sec" id="lx">⬆️ Xuất thư viện (exams.json)</button>
-        <label class="btn sec" for="li">⬇️ Nhập đề thi / thư viện (.json)</label>
+        <label class="btn sec" for="li">⬇️ Nhập thêm đề từ file (.json)</label>
         <input type="file" id="li" accept=".json,application/json" multiple hidden>
         <input type="file" id="li-one" accept=".json,application/json" hidden>
       </div>
-      <p class="note"><b>Quy trình thi trực tuyến:</b><br>1. Tải đề lên &rarr; 2. Chọn Cài đặt &rarr; 3. Xuất file exams.json và tải lên Github đè vào file cũ &rarr; 4. Gửi Link thi.</p>
-      <p class="note"><b>Sao lưu / chuyển đề:</b> mỗi đề trong danh sách có nút <b>Xuất .json</b> (tải riêng đề đó về máy) và <b>Nhập .json</b> (ghi đè nội dung đề đó từ file). Nút <b>Nhập đề thi / thư viện</b> ở trên nhận được file 1 đề hoặc file exams.json nhiều đề, chọn được nhiều file cùng lúc.</p>
+      <p class="note"><b>Quy trình thi trực tuyến:</b><br>1. Tải đề lên &rarr; 2. Chọn Cài đặt &rarr; 3. Bấm <b>Xuất .json</b> ở đúng đề đó, tải file <code>exam-&lt;mã đề&gt;.json</code> lên Github (cùng thư mục với index.html, đè file cũ của đề đó) &rarr; 4. Gửi Link thi.</p>
+      <p class="note"><b>Mỗi đề là một file thư viện riêng, không dùng chung:</b> mỗi đề có nút <b>Xuất .json</b> (tạo file <code>exam-&lt;mã đề&gt;.json</code> chỉ chứa đề đó) và <b>Nhập .json</b> (ghi đè nội dung đề đó từ file, giữ nguyên link thi). Nút <b>Nhập thêm đề từ file</b> ở trên thêm đề mới từ các file đề riêng lẻ (chọn được nhiều file, mỗi file 1 đề).</p>
     </div>
 
     <details id="libbox" class="card" open>
@@ -277,7 +276,7 @@ main{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env
                 <input type="datetime-local" id="close-at">
             </div>
             <button class="btn sec" type="button" id="btn-clear-sch" style="margin-bottom:0">Bỏ hạn thời gian</button>
-            <div class="note" style="flex-basis:100%;margin:0">Để trống = không giới hạn. Học sinh chỉ vào làm được trong khoảng này, đến giờ đóng đề hệ thống tự nộp bài. Sau khi lưu nhớ xuất lại exams.json và tải lên Github.</div>
+            <div class="note" style="flex-basis:100%;margin:0">Để trống = không giới hạn. Học sinh chỉ vào làm được trong khoảng này, đến giờ đóng đề hệ thống tự nộp bài. Sau khi lưu nhớ bấm Xuất .json ở đề này và tải file exam-&lt;mã đề&gt;.json lên Github.</div>
         </div>
 
       </div>
@@ -342,6 +341,7 @@ let studentData = { name: '', class: '', startTime: 0 };
 let timerInterval, timeLeft = 0, submitted = false;
 let examEndAt = Infinity, examRunning = false;
 const LK = 'exams_v2';
+const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const L4 = 'ABCD';
 
 let serverOffset = 0, gateTimer = null;
@@ -394,7 +394,7 @@ function loadLib() {
 function saveLib() {
     let ok = true;
     try { localStorage.setItem(LK, JSON.stringify(lib)); }
-    catch(e) { ok = false; alert('Lỗi bộ nhớ trình duyệt, vui lòng dọn dẹp hoặc xuất exams.json'); }
+    catch(e) { ok = false; alert('Lỗi bộ nhớ trình duyệt, vui lòng dọn dẹp hoặc xuất từng đề ra file .json'); }
     showLib();
     return ok;
 }
@@ -453,7 +453,7 @@ $('btn-save-settings').onclick = () => {
         exam.shufQ = $('chk-shuf-q').checked;
         exam.shufOpt = $('chk-shuf-opt').checked;
         saveLib();
-        alert('Đã lưu cài đặt! Nhớ xuất lại file exams.json để cập nhật lên Github.');
+        alert('Đã lưu cài đặt! Nhớ bấm Xuất .json ở đề này rồi tải file exam-<mã đề>.json lên Github.');
     }
 };
 
@@ -466,7 +466,6 @@ $('btn-copy-link').onclick = () => {
 };
 
 // ===== Xuất / nhập đề thi dạng .json =====
-const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const slug = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
 
 function downloadJSON(obj, filename) {
@@ -477,17 +476,12 @@ function downloadJSON(obj, filename) {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-// Xuất toàn bộ thư viện (mảng nhiều đề) -> exams.json để tải lên Github
-$('lx').onclick = () => {
-    if(!lib.length) return alert('Danh sách đang trống.');
-    downloadJSON(lib, 'exams.json');
-};
-
-// Xuất riêng từng đề -> de-<ten-de>.json
+// Xuất riêng từng đề -> exam-<mã đề>.json (mỗi đề một file thư viện riêng)
+const examFileName = id => 'exam-' + id + '.json';
 window.exportExam = id => {
     const x = lib.find(y => y.id === id);
     if(!x) return;
-    downloadJSON(x, 'de-' + (slug(x.name) || x.id) + '.json');
+    downloadJSON(x, examFileName(x.id));
 };
 
 // Kiểm tra và chuẩn hóa 1 đề đọc từ file; trả về null nếu không hợp lệ
@@ -515,12 +509,9 @@ async function readExamFile(f) {
     let data;
     try { data = JSON.parse(await f.text()); }
     catch(e) { throw new Error('"' + f.name + '" không phải file JSON hợp lệ.'); }
-    const out = []; let bad = 0;
-    (Array.isArray(data) ? data : [data]).forEach(x => {
-        const n = normExam(x, 'e' + Date.now() + Math.random().toString(36).slice(2, 7));
-        if(n) out.push(n); else bad++;
-    });
-    return {out, bad};
+    if(Array.isArray(data)) throw new Error('"' + f.name + '" là file thư viện chung nhiều đề. Hệ thống chỉ nhận file của từng đề riêng (exam-<mã đề>.json).');
+    const n = normExam(data, 'e' + Date.now() + Math.random().toString(36).slice(2, 7));
+    return {out: n ? [n] : [], bad: n ? 0 : 1};
 }
 
 // Sau khi nhập: nếu đang mở bảng cài đặt của 1 đề thì nạp lại cho khớp dữ liệu mới
@@ -531,7 +522,7 @@ function refreshOpenExam() {
     else { exam = null; $('reqbox').classList.add('hide'); $('list-teacher').innerHTML = ''; }
 }
 
-// Nhập 1 hoặc nhiều file (1 đề hoặc thư viện nhiều đề) vào danh sách
+// Nhập 1 hoặc nhiều file (mỗi file 1 đề) vào danh sách
 $('li').onchange = async e => {
     const files = Array.from(e.target.files); e.target.value = '';
     if(!files.length) return;
@@ -569,7 +560,7 @@ $('li-one').onchange = async e => {
     try {
         const {out} = await readExamFile(f);
         if(!out.length) return alert('File không chứa đề thi hợp lệ.\n(File phải là đề xuất từ ứng dụng này: có "name" và "items".)');
-        if(out.length > 1) return alert('File "' + f.name + '" chứa ' + out.length + ' đề. Nút này chỉ nhập 1 đề cho đề đã chọn.\nHãy dùng nút "Nhập đề thi / thư viện (.json)" ở phía trên để nhập nhiều đề.');
+        if(out.length > 1) return alert('File "' + f.name + '" chứa ' + out.length + ' đề. Nút này chỉ nhập 1 đề cho đề đã chọn.\nHãy dùng nút "Nhập thêm đề từ file" ở phía trên.');
         const n = out[0];
         const qn = n.items.filter(k => k.k === 'q').length;
         if(!confirm('Ghi đè đề "' + lib[i].name + '" bằng đề "' + n.name + '" (' + qn + ' câu) từ file "' + f.name + '"?\n\nMã đề và link thi của đề này được giữ nguyên.')) return;
@@ -577,7 +568,7 @@ $('li-one').onchange = async e => {
         lib[i] = n;
         if(saveLib()) {
             refreshOpenExam();
-            alert('Đã nhập đề thi từ file .json. Nhớ xuất lại exams.json và tải lên Github để học sinh thấy bản mới.');
+            alert('Đã nhập đề thi từ file .json. Nhớ xuất lại file .json của đề này và tải lên Github để học sinh thấy bản mới.');
         }
     } catch(err) { alert('Lỗi: ' + err.message); }
 };
@@ -980,13 +971,14 @@ async function initStudentFlow(id) {
     
     try {
         const t0 = Date.now();
-        const res = await fetch('exams.json?t=' + t0, { cache: 'no-store' });
+        if (!SAFE_ID.test(id)) throw new Error('Mã đề không hợp lệ');
+        const res = await fetch('exam-' + encodeURIComponent(id) + '.json?t=' + t0, { cache: 'no-store' });
         const t1 = Date.now();
-        if (!res.ok) throw new Error('Không tìm thấy file exams.json');
+        if (!res.ok) throw new Error('Không tìm thấy file đề');
         const sd = Date.parse(res.headers.get('Date') || '');
         if (isFinite(sd)) serverOffset = sd - (t0 + t1) / 2;
         const data = await res.json();
-        exam = Array.isArray(data) ? data.find(x => x.id === id) : null;
+        exam = (data && !Array.isArray(data) && data.id === id && Array.isArray(data.items)) ? data : null;
     } catch(e) {}
 
     if(!exam) {
@@ -1003,7 +995,7 @@ async function initStudentFlow(id) {
         let warn = document.createElement('p');
         warn.style.color = 'var(--bad)';
         warn.style.fontWeight = 'bold';
-        warn.textContent = 'Hệ thống không tìm thấy mã đề. Vui lòng báo Giáo viên tải file exams.json lên Github!';
+        warn.textContent = 'Hệ thống không tìm thấy mã đề. Vui lòng báo Giáo viên tải file đề (exam-<mã đề>.json) lên Github!';
         $('sf').appendChild(warn);
         return;
     }
