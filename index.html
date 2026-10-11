@@ -266,6 +266,16 @@ main{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env
             </label>
         </div>
 
+        <div style="margin-top:15px; background:#f8fafc; padding:15px; border-radius:10px; border:1px solid var(--bd);">
+            <label for="sheet-url" style="font-weight:600">📊 Đường dẫn Google Sheet nhận kết quả (Apps Script Web App .../exec)</label>
+            <input type="text" id="sheet-url" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" style="margin:8px 0 8px">
+            <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center">
+                <button class="btn sec" type="button" id="btn-test-sheet" style="margin:0">Gửi thử 1 dòng</button>
+                <button class="btn sec" type="button" id="btn-clear-sheet" style="margin:0">Dùng đường dẫn mặc định</button>
+                <span class="note" style="margin:0">Để trống = dùng đường dẫn mặc định. Mỗi đề lưu riêng, đi theo file exam-&lt;mã đề&gt;.json.</span>
+            </div>
+        </div>
+
         <div class="sch-box">
             <div>
                 <label for="open-at">🟢 Giờ mở đề (bắt đầu)</label>
@@ -330,8 +340,13 @@ function triggerMathJax(tries) {
     }
 }
 
-const PW = '28011981';
-const WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxA3z9HI79kfwf4Q84flyvWbXjkIA5V9dqladDTwZoHQACoJ0MuPpE_KW788WVVWrnX/exec';
+const PW = 'tienhuong28011981';
+// ===== CẤU HÌNH GOOGLE SHEET =====
+// Mỗi đề có đường dẫn Google Sheet (Apps Script Web App) riêng, lưu trong file đề (exam.sheetUrl).
+// Đề nào chưa đặt riêng sẽ dùng đường dẫn mặc định bên dưới (để '' nếu không muốn có mặc định).
+const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbypqP_7jeXsu7XzLBX0w5VWN0HXZXM6xwBACY0FG4NhDjTNWszTmjiUpERSGfK3PxZ-/exec';
+const SHEET_URL_RE = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+const sheetUrlOf = x => (x && x.sheetUrl) || DEFAULT_SHEET_URL || '';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -406,7 +421,7 @@ function showLib() {
         return `
         <div class="lr">
             <div class="lr-info"><span class="no">${i+1}</span>
-            <div><b>${esc(x.name)}</b><div class="note">${x.items.filter(k=>k.k==='q').length} câu • Cài đặt: ${x.time||0} phút - Thang điểm: ${tScale}${(x.openAt||x.closeAt) ? `<br>🕒 ${x.openAt ? 'Mở: ' + fmtDT(x.openAt) : 'Mở: ngay'} — ${x.closeAt ? 'Đóng: ' + fmtDT(x.closeAt) : 'không giới hạn'}` : ''}</div></div></div>
+            <div><b>${esc(x.name)}</b><div class="note">${x.items.filter(k=>k.k==='q').length} câu • Cài đặt: ${x.time||0} phút - Thang điểm: ${tScale}<br>📊 Sheet: ${x.sheetUrl ? 'riêng ('+esc(x.sheetUrl.slice(-14))+')' : (DEFAULT_SHEET_URL ? 'mặc định' : '<span style="color:var(--bad)">chưa đặt</span>')}${(x.openAt||x.closeAt) ? `<br>🕒 ${x.openAt ? 'Mở: ' + fmtDT(x.openAt) : 'Mở: ngay'} — ${x.closeAt ? 'Đóng: ' + fmtDT(x.closeAt) : 'không giới hạn'}` : ''}</div></div></div>
             <div class="lr-act">
                 <button class="btn sec" onclick="openExam('${x.id}')">Quản lý</button>
                 <button class="btn sec" title="Tải riêng đề này về máy (.json)" onclick="exportExam('${x.id}')">⬆️ Xuất .json</button>
@@ -435,6 +450,7 @@ window.openExam = (id) => {
     $('exam-scale').value = exam.scale || 'other';$('chk-shuf-grp').checked = !!exam.shufGrp; 
     $('chk-shuf-q').checked = exam.shufQ !== false; 
     $('chk-shuf-opt').checked = exam.shufOpt !== false; 
+    $('sheet-url').value = exam.sheetUrl || '';
 
     cur = JSON.parse(JSON.stringify(exam.items)); 
     renderTeacherPreview();
@@ -452,11 +468,26 @@ $('btn-save-settings').onclick = () => {
         exam.shufGrp = $('chk-shuf-grp').checked;
         exam.shufQ = $('chk-shuf-q').checked;
         exam.shufOpt = $('chk-shuf-opt').checked;
+        const su = $('sheet-url').value.trim();
+        if(su && !SHEET_URL_RE.test(su)) return alert('Đường dẫn Google Sheet không đúng định dạng.\nPhải có dạng: https://script.google.com/macros/s/.../exec');
+        exam.sheetUrl = su;
         saveLib();
         alert('Đã lưu cài đặt! Nhớ bấm Xuất .json ở đề này rồi tải file exam-<mã đề>.json lên Github.');
     }
 };
 
+$('btn-clear-sheet').onclick = () => { $('sheet-url').value = ''; };
+$('btn-test-sheet').onclick = async () => {
+    if(!exam) return;
+    const su = $('sheet-url').value.trim() || DEFAULT_SHEET_URL;
+    if(!SHEET_URL_RE.test(su)) return alert('Chưa có đường dẫn Google Sheet hợp lệ.');
+    if(!confirm('Sẽ gửi 1 dòng thử (tên "TEST") vào Google Sheet này. Tiếp tục?')) return;
+    try {
+        await fetch(su, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ examId: exam.id, examName: exam.name, studentName: 'TEST', studentClass: 'TEST', timeTaken: 0, scoreStr: '0/10 điểm', details: JSON.stringify({ test: true }) }) });
+        alert('Đã gửi. Hãy mở Google Sheet kiểm tra có dòng TEST chưa.');
+    } catch(e) { alert('Không gửi được: ' + e.message); }
+};
 $('btn-clear-sch').onclick = () => { $('open-at').value = ''; $('close-at').value = ''; };
 
 $('btn-copy-link').onclick = () => {
@@ -500,7 +531,8 @@ function normExam(x, fallbackId) {
         scale: (x.scale === 'math' || x.scale === 'english') ? x.scale : 'other',
         openAt: +x.openAt || 0,
         closeAt: +x.closeAt || 0,
-        shufGrp: !!x.shufGrp, shufQ: x.shufQ !== false, shufOpt: x.shufOpt !== false
+        shufGrp: !!x.shufGrp, shufQ: x.shufQ !== false, shufOpt: x.shufOpt !== false,
+        sheetUrl: SHEET_URL_RE.test(String(x.sheetUrl || '')) ? String(x.sheetUrl) : ''
     };
 }
 
@@ -1347,8 +1379,9 @@ async function processSubmission() {
     };
 
     try {
-        if (WEBHOOK_URL !== 'YOUR_GOOGLE_SCRIPT_WEBAPP_URL_HERE') {
-            await fetch(WEBHOOK_URL, {
+        const sheetUrl = sheetUrlOf(exam);
+        if (SHEET_URL_RE.test(sheetUrl)) {
+            await fetch(sheetUrl, {
                 method: 'POST',
                 mode: 'no-cors',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
